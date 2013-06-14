@@ -1,8 +1,8 @@
-Ticket Restaurant Tool v0.1)
+<b>Ticket Restaurant Tool v0.10</b>
 
 This project aims to provide a simple CLI tool to view an account balance and last movements of a Ticket Restaurant Account
 
-usage: ticket.py [-h] [-s | -m] [-u <user>] [-p <password>] [-v] [-V]
+<b>usage:<b/> ticket.py [-h] [-s | -m] [-u <user>] [-p <password>] [-v] [-V]
 
 Ticket Restaurant Tool v0.10 (c) David Silva 2013
 
