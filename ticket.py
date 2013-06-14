@@ -114,7 +114,7 @@ http_codes = {
 }
 
 # version
-VERSION = "0.10"
+VERSION = "0.11"
 
 
 # Movement class
@@ -236,7 +236,6 @@ class TicketRestaurantScraper:
         request = urllib2.Request(url, data)
         request.add_header("DNT", "1")
         request.add_header("User-Agent", self.__config("HTTP_USER_AGENT"))
-        #request.add_header("Cookie", "ASP.NET_SessionId=n5cao055puqv4m45tfzgla55; .HBCONNECT=28D264A5A844047F96B4AAFA755A7DFB17C514CCB464CCE4F9771FD0B2A31806049CC2DE6496B46FD2D48C2FE8A9DA79EDB02DFAAA43045284B34D7878CF7DE3D2D7D58BB76F40CCB96AF53BC8400C1DABA3BEE6F0415672262D985B838B29F7")
         if not self.cookies is None:
             request.add_header("Cookie", self.cookies)
         return request
@@ -285,13 +284,11 @@ class TicketRestaurantScraper:
         viewState = None
         viewValidation = None
         if not self.has_errors():
-            #self.cookies = results.info()['Set-Cookie']
-            #self.__debug("Cookies: " + self.cookies)
             html = BeautifulSoup(results.read())
             viewState = html.find("input", {"id": "__VIEWSTATE"})["value"]
             viewValidation = html.find("input", {"id": "__EVENTVALIDATION"})["value"]
-            #self.__debug("__VIEWSTATE: %s" % (viewState))
-            #self.__debug("__EVENTVALIDATION: %s" % (viewValidation))
+            self.__debug("__VIEWSTATE: %s" % (viewState))
+            self.__debug("__EVENTVALIDATION: %s" % (viewValidation))
         else:
             self.__debug("unable to get view state / validation")
             return False
@@ -314,8 +311,6 @@ class TicketRestaurantScraper:
                 return False
             else:
                 self.cookies = self.__parse_cookies(response.info())
-                #hbconnect_cookie = response.info()["Set-Cookie"].split()[0]
-                #self.cookies = self.cookies.split()[0] + " " + hbconnect_cookie[:len(hbconnect_cookie)-1]
                 self.__debug("Cookies: " + self.cookies)
                 self.__debug("Successfully logged in!")
                 return True

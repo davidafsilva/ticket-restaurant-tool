@@ -1,4 +1,4 @@
-<b>Ticket Restaurant Tool v0.10</b>
+<b>Ticket Restaurant Tool v0.11</b>
 
 This project aims to provide a simple CLI tool to view an account balance and last movements of a Ticket Restaurant Account
 
