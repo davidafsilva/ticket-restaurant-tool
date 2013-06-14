@@ -1,4 +1,4 @@
-<b>Ticket Restaurant Tool v0.11</b>
+<h3>Ticket Restaurant Tool v0.11</h3>
 
 This project aims to provide a simple CLI tool to view an account balance and last movements of a Ticket Restaurant Account
 
@@ -19,7 +19,7 @@ optional arguments:
 Either -s or -m must be provided
 </pre>
 
-<h2>Soon:</h2>
+<h3>Soon:</h3>
 - Ordered movements
 - Filtered movements (debit/credit)
 - JSON output
