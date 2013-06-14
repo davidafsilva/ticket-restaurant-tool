@@ -29,21 +29,23 @@ import urllib
 import urllib2
 import sys
 import datetime
-from bs4 import BeautifulSoup
+import re
+import argparse
+from bs4 import BeautifulSoup, element
 
 # configuration
 
 configuration = {
-    # authentication parameters
+    # authentication parameters (if not set by -u and -p options)
     "LOGIN_USER": "xxx",
     "LOGIN_PWD": "xxx",
     # tipically you don't need to change nothing below
-    "DEBUG": True,
+    "DEBUG": False,
     "BASE_URL": "https://www.unibancoconnect.pt",
     "LOGIN_URL": "https://www.unibancoconnect.pt/login.aspx",
     "BALANCE_URL": "https://www.unibancoconnect.pt/Consultas/Saldos.aspx",
     "MOVEMENTS_URL": "https://www.unibancoconnect.pt/Consultas/UltimosMovimentos.aspx",
-    "HTTP_USER_AGENT": "Mozilla/5.0 (Macintosh) AppleWebKit/537 Chrome/26 Safari/537",
+    "HTTP_USER_AGENT": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_7_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/27.0.1453.110 Safari/537.36"
 }
 
 # /configuration
@@ -112,7 +114,63 @@ http_codes = {
 }
 
 # version
-VERSION = "0.10a1"
+VERSION = "0.10"
+
+
+# Movement class
+class UnibancoMovement:
+    def __init__(self, date, description, debit_amount, credit_amount):
+        """
+        constructor
+        """
+        self.date = date
+        self.description = " ".join(description.split())
+        self.__is_debit = credit_amount is None or len(credit_amount) == 0
+        if self.__is_debit:
+            self.amount = debit_amount
+        else:
+            self.amount = credit_amount
+
+    def get_date(self):
+        """
+        Get the movement date
+        """
+        return self.date
+
+    def get_description(self):
+        """
+        Get the movement description
+        """
+        return self.description
+
+    def is_debit(self):
+        """
+        Check if the movement is a debit
+        """
+        return self.__is_debit
+
+    def is_credit(self):
+        """
+        Check if the movement is a credit
+        """
+        return not self.__is_debit
+
+    def get_amount(self):
+        """
+        Gets the movement amount
+        """
+        return self.amount
+
+    def __str__(self):
+        """
+        String representation method
+        """
+        if self.is_credit():
+            _mov = u"Credit: "
+        else:
+            _mov = u"Debit: "
+        _mov += self.get_description() + " (" + self.get_date() + ")" + " - " + self.get_amount()
+        return _mov
 
 
 # Unibanco custom HTTP redirect handler
@@ -176,12 +234,9 @@ class TicketRestaurantScraper:
         Builds an HTTP request
         """
         request = urllib2.Request(url, data)
-        request.add_header("User-Agent", configuration["HTTP_USER_AGENT"])
-        request.add_header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-        request.add_header("Origin", self.__config("BASE_URL"))
-        request.add_header("Accept-Encoding", "gzip")
-        request.add_header("Cache-Control", "max-age=0")
-        request.add_header("Connection", "keep-alive")
+        request.add_header("DNT", "1")
+        request.add_header("User-Agent", self.__config("HTTP_USER_AGENT"))
+        #request.add_header("Cookie", "ASP.NET_SessionId=n5cao055puqv4m45tfzgla55; .HBCONNECT=28D264A5A844047F96B4AAFA755A7DFB17C514CCB464CCE4F9771FD0B2A31806049CC2DE6496B46FD2D48C2FE8A9DA79EDB02DFAAA43045284B34D7878CF7DE3D2D7D58BB76F40CCB96AF53BC8400C1DABA3BEE6F0415672262D985B838B29F7")
         if not self.cookies is None:
             request.add_header("Cookie", self.cookies)
         return request
@@ -192,7 +247,6 @@ class TicketRestaurantScraper:
         """
         try:
             request = self.__build_request(url, None)
-            print request.headers
             response = urllib2.urlopen(request)
             return response
         except urllib2.HTTPError, e:
@@ -220,35 +274,33 @@ class TicketRestaurantScraper:
             self.error = "Unable to reach the server:", e.reason
         return None
 
-    def __login(self):
+    def __login(self, user, pwd):
         """
         Logs in into the server
         """
         # get the view state / validation
+        self.__debug("getting view state, event validation...")
         url = self.__config("LOGIN_URL")
         results = self.__get(url)
         viewState = None
         viewValidation = None
         if not self.has_errors():
-            self.cookies = results.info()['Set-Cookie']
+            #self.cookies = results.info()['Set-Cookie']
+            #self.__debug("Cookies: " + self.cookies)
             html = BeautifulSoup(results.read())
             viewState = html.find("input", {"id": "__VIEWSTATE"})["value"]
             viewValidation = html.find("input", {"id": "__EVENTVALIDATION"})["value"]
-            self.__debug("__VIEWSTATE: %s" % (viewState))
-            self.__debug("__EVENTVALIDATION: %s" % (viewValidation))
+            #self.__debug("__VIEWSTATE: %s" % (viewState))
+            #self.__debug("__EVENTVALIDATION: %s" % (viewValidation))
         else:
             self.__debug("unable to get view state / validation")
             return False
 
-        user = self.__config("LOGIN_USER")
-        pwd = self.__config("LOGIN_PWD")
         self.__debug("Logging in as " + user + "...")
         parameters = {}
         parameters['__EVENTTARGET'] = "ctl00$Conteudo$BtnConfirmar"
         parameters['__VIEWSTATE'] = viewState
         parameters['__EVENTVALIDATION'] = viewValidation
-        parameters['__EVENTARGUMENT'] = ''
-        parameters['__LASTFOCUS'] = ''
         parameters['ctl00$Conteudo$TxtUserCard'] = user
         parameters['ctl00$Conteudo$TxtPwd'] = pwd
         response = self.__post(url, parameters)
@@ -257,15 +309,41 @@ class TicketRestaurantScraper:
             html = BeautifulSoup(html)
             err = html.find("div", {"id": "ctl00_Conteudo_SumaErro"})
             if not err is None:
-                self.__debug("Login failed: %s" % (err.get_text().replace('\n', '')))
+                self.error = err.get_text().replace('\n', '')
+                self.__debug("Login failed: %s" % (self.error))
                 return False
             else:
-                hbconnect_cookie = response.info()["Set-Cookie"].split()[0]
-                self.cookies = self.cookies.split()[0] + " " + hbconnect_cookie[:len(hbconnect_cookie)-1]
-                self.__debug(self.cookies)
+                self.cookies = self.__parse_cookies(response.info())
+                #hbconnect_cookie = response.info()["Set-Cookie"].split()[0]
+                #self.cookies = self.cookies.split()[0] + " " + hbconnect_cookie[:len(hbconnect_cookie)-1]
+                self.__debug("Cookies: " + self.cookies)
                 self.__debug("Successfully logged in!")
                 return True
         return False
+
+    def __parse_cookies(self, headers):
+        """
+        Parses the received cookies
+        """
+        ret = None
+        if "Set-Cookie" in headers:
+            cookies = headers["Set-Cookie"]
+            idx = 0
+            pattern = re.compile(r';|,')
+            for cookie in pattern.split(cookies):
+                cookie = cookie.strip()
+                idx = cookie.find("=")
+                if idx >= 0:
+                    if cookie[:idx] == "ASP.NET_SessionId" or cookie[:idx] == ".HBCONNECT":
+                        if ret is None:
+                            ret = cookie.strip()
+                        else:
+                            if ret[-1] == ";":
+                                ret = ret + " " + cookie.strip()
+                            else:
+                                ret = ret + "; " + cookie.strip()
+
+        return ret
 
     ## public methods ##
 
@@ -281,12 +359,9 @@ class TicketRestaurantScraper:
         """
         return self.error
 
-    def get_balance(self):
-        """
-        Gets the balance of the account
-        """
-        self.__debug("fetching URL: " + self.__config("BALANCE_URL"))
-        results = self.__get(self.__config("BALANCE_URL"))
+    def __do_http_operation(self, url):
+        self.__debug("fetching URL: " + url)
+        results = self.__get(url)
         if not self.has_errors():
             html = BeautifulSoup(results.read())
             err = html.find("div", {"id": "ctl00_Conteudo_SumaErro"})
@@ -294,26 +369,48 @@ class TicketRestaurantScraper:
                 self.error = err.get_text().replace('\n', '')
                 self.__debug("Fetch balance failed: %s" % (self.error))
             else:
-                pass
+                return html
+        return None
 
+    def get_balance(self):
+        """
+        Gets the balance of the account
+        """
+        html = self.__do_http_operation(self.__config("BALANCE_URL"))
+        if not html is None:
+            balance = html.find("span", {"id": "ctl00_Conteudo_lblMontDisponivel"}).get_text()
+            return balance
         return None
 
     def get_movements(self):
         """
         Gets the movements of the account
         """
-        pass
+        html = self.__do_http_operation(self.__config("MOVEMENTS_URL"))
+        movements = []
+        if not html is None:
+            div_container = html.find("div", {"id": "ctl00_Conteudo_PanelConteud"})
+            m_table = div_container.find_all(["table"])[1]
+            for idx in range(5, len(m_table.contents)):
+                tr = m_table.contents[idx]
+                if type(tr) is element.Tag:
+                    td_date = tr.contents[0].get_text().strip()
+                    td_description = tr.contents[1].get_text().strip()
+                    td_debit = tr.contents[2].get_text().strip()
+                    td_credit = tr.contents[3].get_text().strip()
+                    movements.append(UnibancoMovement(td_date, td_description, td_debit, td_credit))
+        return movements
 
-    def login(self):
-        return self.__login()
+    def login(self, user, pwd):
+        return self.__login(user, pwd)
 
 
-def __handle_operation(opt):
+def __handle_operation(opt, user, pwd):
     """
     Handles a given operation
     """
     scraper = TicketRestaurantScraper()
-    if scraper.login():
+    if scraper.login(user, pwd):
         if opt == 1:
             return scraper.get_balance()
         elif opt == 2:
@@ -323,29 +420,31 @@ def __handle_operation(opt):
     return None
 
 
-def help():
-    """
-    Prints a little help statement
-    """
-    print "Ticket Restaurant Tool v%s (c) David Silva" % (VERSION)
-    print "Usage: %s [balance|movements]" % (sys.argv[0])
+# arg parser
+parser = argparse.ArgumentParser(description='Ticket Restaurant Tool v%s (c) David Silva 2013' % (VERSION), epilog="Either -s or -m must be provided")
+group = parser.add_mutually_exclusive_group()
+group.add_argument('-s', '--saldo', action='store_true', help='checks the balance of the account')
+group.add_argument('-m', '--movimentos', action='store_true', help='checks the movements of the account')
+parser.add_argument('-u', '--user', metavar='<user>', default=configuration["LOGIN_USER"], help='specifies the user for the authentication')
+parser.add_argument('-p', '--password', metavar='<password>', default=configuration["LOGIN_PWD"], help='specifies the password for the authentication')
+parser.add_argument('-v', '--verbose', action='store_true', help='turns on the debug/verbose output')
+parser.add_argument('-V', '--version', action='version', version='Ticket Restaurant v%s' % (VERSION))
+args = parser.parse_args()
 
+# setup debug
+configuration["DEBUG"] = args.verbose
 
-def main():
-    if not len(sys.argv) == 2:
-        help()
-    else:
-        opt = sys.argv[1].lower()
-        if opt == 'balance' or opt == 'b':
-            print __handle_operation(1)
-        elif opt == 'movements' or opt == 'movs' or opt == 'mov' or opt == 'm':
-            movements = __handle_operation(2)
-            for mov in movements:
-                print mov
-        else:
-            help()
-
-
-# call the main
-if __name__ == "__main__":
-    main()
+# execute the options
+if args.saldo:
+    balance = __handle_operation(1, args.user, args.password)
+    if not balance is None:
+        print "Montante dispon" + u"\u00ED" + "vel: " + balance + u"\u20AC"
+elif args.movimentos:
+    movements = __handle_operation(2, args.user, args.password)
+    if not movements is None and len(movements) > 0:
+        for mov in movements:
+            print str(mov)
+    elif not movements is None:
+        print "Nenhum movimento efectuado"
+else:
+    parser.error("Either -s or -m must be provided.\n%s -h for help" % (sys.argv[0]))
