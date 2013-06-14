@@ -433,7 +433,7 @@ configuration["DEBUG"] = args.verbose
 if args.saldo:
     balance = __handle_operation(1, args.user, args.password)
     if not balance is None:
-        print "Montante dispon" + u"\u00ED" + "vel: " + balance + u"\u20AC"
+        print u"Montante dispon\u00EDvel: " + balance + u"\u20AC"
 elif args.movimentos:
     movements = __handle_operation(2, args.user, args.password)
     if not movements is None and len(movements) > 0:

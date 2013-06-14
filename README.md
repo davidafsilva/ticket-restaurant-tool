@@ -18,3 +18,9 @@ optional arguments:
 
 Either -s or -m must be provided
 </pre>
+
+<h2>Soon:</h2>
+- Ordered movements
+- Filtered movements (debit/credit)
+- JSON output
+- XML output 
