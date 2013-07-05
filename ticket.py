@@ -1,3 +1,5 @@
+#! /usr/bin/python
+# -*- coding: UTF-8 -*-
 """
 Copyright (c) 2013, David Silva
 All rights reserved.
